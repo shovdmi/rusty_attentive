@@ -1,5 +1,5 @@
-#[allow(dead_code)]
-#[allow(non_camel_case_types)]
+#![allow(dead_code)]
+#![allow(non_camel_case_types)]
 
 
 enum at_parser_state {
@@ -21,8 +21,30 @@ enum at_response_type {
     HEXDATA_FOLLOWS {amount: i32},  // rust's enum feature
 }
 
-struct Parser<cb_scan_line, cb_handle_response, cb_handle_urc> 
-where cb_scan_line: FnMut(), cb_handle_response: FnMut() , cb_handle_urc: FnMut() {
+//https://stackoverflow.com/questions/41081240/idiomatic-callbacks-in-rust/41081702
+//https://users.rust-lang.org/t/solved-how-to-pass-none-to-a-function-when-an-option-closure-is-expected/10956/2
+struct callback_func {
+    handler_func : Option<fn(&str)>,
+}
+impl callback_func {
+    fn try_to_call(self, s: &str) {
+        match self.handler_func {
+            Some(f) => f(s),
+            None => println!("No user-handler defined"),
+        }
+    }
+}
+
+struct callbacks {
+    scan_line : Option<fn(&[char])>,
+    handle_response : Option<fn(&str)>,
+    handle_urc : Option<fn(&str)>,
+}
+impl callbacks {
+    
+}
+
+struct Parser {
     state: at_parser_state,
     expect_data_promt: bool,
     data_left: u32,
@@ -33,14 +55,10 @@ where cb_scan_line: FnMut(), cb_handle_response: FnMut() , cb_handle_urc: FnMut(
     buf_size: u32,
     buf_current: u32,
     
-    scan_line : cb_scan_line,
-    handle_response : cb_handle_response,
-    handle_urc : cb_handle_urc,
+    cbs : callbacks,
 }
 
-impl<cb_scan_line, cb_handle_response, cb_handle_urc> 
-    Parser<cb_scan_line, cb_handle_response, cb_handle_urc> 
-    where cb_scan_line: FnMut(), cb_handle_response: FnMut(), cb_handle_urc: FnMut() {
+impl Parser {
     ///
     ///
     ///
@@ -72,6 +90,12 @@ impl<cb_scan_line, cb_handle_response, cb_handle_urc>
     ///
     ///
     ///
+    fn generic_scan_line(&self, line : &[char]) {
+        println!("generic(parser's) scan line : {:?}", line)
+    }
+    ///
+    ///
+    ///
     fn handle_line(&mut self) {
         println!("\tparser handle line");
         
@@ -84,21 +108,28 @@ impl<cb_scan_line, cb_handle_response, cb_handle_urc>
         //parser->buf[parser->buf_used] = '\0';
         
         //Extract line address & length for later use.
-        let line = &self.buf[self.buf_current as usize .. self.buf_used as usize];
+        let line = &(self.buf[self.buf_current as usize .. self.buf_used as usize]);
         let len = self.buf_used - self.buf_current;
         println!("\tline: {:?} len:{}", line, len);
         
         //Determine response type.
         let mut response_type = at_response_type::UNKNOWN;
         
-        //https://stackoverflow.com/questions/41081240/idiomatic-callbacks-in-rust/41081702
-        //https://users.rust-lang.org/t/solved-how-to-pass-none-to-a-function-when-an-option-closure-is-expected/10956/2
-   /*     if self.cbs.scanline != None
-            response_type = self.cbs.scanline();
+        match self.cbs.scan_line {
+            Some(f) => f(&line),
+            None => {   println!("No user-handler defined");
+                        self.generic_scan_line(&line);
+                     },
+        }
         
-        if response_type == at_response_type::UNKNOWN
-            response_type = self.generic_line_scanner(&line, len);
-     */   
+        // Expected URCs and all unexpected lines are sent to URC handler.
+        // parser->state == STATE_IDLE -- means, we are in the idle state, 
+        // and suddenly received a string+\n (such as "RING\n")
+        // so we treat that as an incoming URC
+        // type == AT_RESPONSE_URC means we are awaiting a response 
+        // to the AT command, and during  this there was a string+\n (such as "RING\n")
+        //if (type == AT_RESPONSE_URC || parser->state == STATE_IDLE)
+
         
     }
     
@@ -142,11 +173,12 @@ impl<cb_scan_line, cb_handle_response, cb_handle_urc>
     }
 }
 
+fn user_scan_line(s: &[char]) {
+    println!("user callback scanline: {:?}", s);
+}
+
 fn main() {
-    let scan_line = || println!("generic callback scanline");
-    let handle_response = ||  println!("generic callback handle_response");
-    let handle_urc = || println!("generic callback handle_urc");
-    
+
     let mut parser = Parser {
     
         state: at_parser_state::IDLE,
@@ -158,10 +190,11 @@ fn main() {
         buf_used: 0,
         buf_size: 0,
         buf_current: 0,
-        
-        scan_line : scan_line,
-        handle_response :  handle_response,
-        handle_urc : handle_urc,
+      
+        cbs : callbacks { scan_line: None, //Some(user_scan_line), 
+                handle_response: None,
+                handle_urc: None,
+        }
     };
 
     parser.reset();
