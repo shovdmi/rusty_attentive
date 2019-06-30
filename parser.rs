@@ -35,8 +35,8 @@ enum at_response_type {
     FINAL_OK,                        // Final response. NOT stored.
     FINAL,                           // Final response. Stored.
     URC,                             // Unsolicited Result Code. Passed to URC handler.
-    RAWDATA_FOLLOWS { amount: i32 }, // rust's enum feature
-    HEXDATA_FOLLOWS { amount: i32 }, // rust's enum feature
+    RAWDATA_FOLLOWS { amount: usize }, // rust's enum feature
+    HEXDATA_FOLLOWS { amount: usize }, // rust's enum feature
 }
 
 //https://stackoverflow.com/questions/41081240/idiomatic-callbacks-in-rust/41081702
@@ -64,7 +64,7 @@ struct Parser {
     state: at_parser_state,
     expect_data_promt: bool,
     data_left: usize,
-    nibbles: u32,
+    nibble: i8,
 
     buf: [u8; 128],
     buf_used: usize,
@@ -83,7 +83,7 @@ impl Parser {
 
         self.expect_data_promt = false;
         self.data_left = 0;
-        self.nibbles = 0;
+        self.nibble = 0;
 
         self.buf = [b'\0'; 128];
         self.buf_used = 0;
@@ -139,17 +139,37 @@ impl Parser {
     ///
     ///
     fn handle_urc(&mut self) {
-        {
         let line = &self.buf[self.buf_current..self.buf_used];
-            match self.cbs.handle_urc {
+        match self.cbs.handle_urc {
                 Some(f) => f(&line),
                 None => {
-                    println!("\t\tNo URC user-handler defined");
+                    println!("\t\tNo 'URC' user-handler defined");
                     // do nothing
                 }
-            };
-        }   
+        };
         self.discard_line();
+    }
+    
+    ///
+    ///
+    ///
+    fn finalize(&self){
+    }
+    ///
+    ///
+    ///
+    fn handle_final_response(&mut self) {
+        println!("parser final response");
+        self.finalize();
+        let line = &self.buf[0..self.buf_used];
+        match self.cbs.handle_response {
+                Some(f) => f(&line),
+                None => {
+                    println!("\t\tNo 'response' user-handler defined");
+                    // do nothing
+                }
+        };
+        self.reset();
     }
     ///
     ///
@@ -189,7 +209,8 @@ impl Parser {
 
         //TODO: NULL-terminate the response .
         //parser->buf[parser->buf_used] = '\0';
-
+        
+        //Extract line address & length for later use.
         let line = &self.buf[self.buf_current as usize..self.buf_used as usize];
         println!("\t\tline: {:X?} len:{}", line, line.len());
 
@@ -235,6 +256,19 @@ impl Parser {
             at_response_type::FINAL_OK => self.include_line(),
             _ => self.discard_line(),
         };
+        
+        use at_response_type::*;
+        match (response_type) {
+            FINAL | FINAL_OK => self.handle_final_response(),
+            RAWDATA_FOLLOWS{amount} => {self.data_left = amount;
+                                        self.state = at_parser_state::RAWDATA;
+                                },
+            HEXDATA_FOLLOWS{amount} => {self.data_left = amount; 
+                                        self.nibble = -1; 
+                                        self.state = at_parser_state::HEXDATA;
+                                },
+            _ => {},
+        };
     }
 
     ///
@@ -246,8 +280,9 @@ impl Parser {
         for ch in st {
             println!("{}", ch);
 
+            use at_parser_state::*;
             match self.state {
-                at_parser_state::IDLE => {
+                IDLE | READLINE => {
                     if ch != &b'\r' && ch != &b'\n' {
                         self.append(*ch);
                     }
@@ -255,17 +290,15 @@ impl Parser {
                         self.handle_line();
                     }
                 }
-
-                at_parser_state::READLINE => {}
-
-                at_parser_state::DATAPROMPT => {
+                
+                DATAPROMPT => {
                     if self.buf_used == 2 && self.buf[0] == b'>' && self.buf[1] == b' ' {
                         self.handle_line();
                     }
                 }
 
-                at_parser_state::RAWDATA => {}
-                at_parser_state::HEXDATA => {}
+                RAWDATA => {}
+                HEXDATA => {}
             }
         }
     }
@@ -284,7 +317,7 @@ fn main() {
         state: at_parser_state::IDLE,
         expect_data_promt: false,
         data_left: 0,
-        nibbles: 0,
+        nibble: 0,
 
         buf: [b'\0'; 128],
         buf_used: 0,
@@ -306,7 +339,8 @@ fn main() {
     let response = b"\rOK\r\n";
     parser.feed(response);
 
-    let response = b"CME ERROR\rOK\r\n";
+    parser.state = at_parser_state::READLINE;
+    let response = b"+CME ERROR:\r\nOK\r\n";
     parser.feed(response);
 
     parser.state = at_parser_state::DATAPROMPT;
