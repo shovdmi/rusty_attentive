@@ -332,21 +332,21 @@ impl Parser {
                         self.state = READLINE;
                     }
                 }
+
                 HEXDATA => {
                     if self.data_left > 0 {
                         let mut value = hex2int(*ch);
-                        if (value != -1) {
+                        if value != -1 {
                             if self.nibble == -1 {
                                 self.nibble = value;
                             } else {
-                                value |= (self.nibble << 4);
+                                value |= self.nibble << 4;
                                 self.nibble = -1;
                                 self.append(value as u8);
                                 self.data_left -= 1;
                             }
                         }
                     }
-
                     if self.data_left == 0 {
                         self.include_line();
                         self.state = READLINE;
@@ -357,8 +357,17 @@ impl Parser {
     }
 }
 
-fn user_scan_line(s: &[u8]) {
-    println!("user callback scanline: {:?}", s);
+fn user_scan_line(s: &[u8]) -> at_response_type {
+    println!("user callback 'scan_line': {:?}", s);
+    at_response_type::FINAL_OK
+}
+
+fn user_handle_response(s: &[u8]) {
+    println!("user callback 'handle response': {:?}", s);
+}
+
+fn user_handle_urc(s: &[u8]) {
+    println!("user callback 'handle urc': {:?}", s);
 }
 
 fn main() {
@@ -378,9 +387,9 @@ fn main() {
         buf_current: 0,
 
         cbs: callbacks {
-            scan_line: None, //Some(user_scan_line),
-            handle_response: None,
-            handle_urc: None,
+            scan_line: None,                             //Some(user_scan_line),
+            handle_response: Some(user_handle_response), //None,
+            handle_urc: Some(user_handle_urc),           //None,
         },
     };
 
@@ -412,6 +421,8 @@ fn main() {
     parser.state = at_parser_state::RAWDATA;
     parser.data_left = 10;
     let response = b"RAW\r12\n345";
+    parser.feed(response);
+    let response = b"OK\n";
     parser.feed(response);
     println!("--------------------------");
 }
