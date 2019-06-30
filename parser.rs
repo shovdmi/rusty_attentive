@@ -29,12 +29,12 @@ enum at_parser_state {
 
 #[derive(Debug)]
 enum at_response_type {
-    UNEXPECTED,                      // Unexpected line; usually an unhandled URC.
-    UNKNOWN,                         // Pass the response to next parser in chain.
-    INTERMEDIATE,                    // Intermediate response. Stored.
-    FINAL_OK,                        // Final response. NOT stored.
-    FINAL,                           // Final response. Stored.
-    URC,                             // Unsolicited Result Code. Passed to URC handler.
+    UNEXPECTED,                        // Unexpected line; usually an unhandled URC.
+    UNKNOWN,                           // Pass the response to next parser in chain.
+    INTERMEDIATE,                      // Intermediate response. Stored.
+    FINAL_OK,                          // Final response. NOT stored.
+    FINAL,                             // Final response. Stored.
+    URC,                               // Unsolicited Result Code. Passed to URC handler.
     RAWDATA_FOLLOWS { amount: usize }, // rust's enum feature
     HEXDATA_FOLLOWS { amount: usize }, // rust's enum feature
 }
@@ -60,7 +60,6 @@ struct callbacks {
 }
 impl callbacks {}
 
-
 fn hex2int(c: u8) -> i16 {
     if c >= b'0' && c <= b'9' {
         return (c - b'0') as i16;
@@ -73,7 +72,6 @@ fn hex2int(c: u8) -> i16 {
     }
     return -1;
 }
-
 
 struct Parser {
     state: at_parser_state,
@@ -100,7 +98,7 @@ impl Parser {
         self.data_left = 0;
         self.nibble = 0;
 
-        self.buf = [b'\0'; 128];
+        self.buf = [b'\0'; PARSER_BUF_SIZE];
         self.buf_used = 0;
         //self.buf_size = PARSER_BUF_SIZE;
         self.buf_current = 0;
@@ -111,7 +109,7 @@ impl Parser {
     ///
     ///
     fn append(&mut self, ch: u8) {
-        println!("\tparser append '0x{:X?}' as char '{}'", ch, ch as char);
+        println!("\tparser append '0x{:02X?}' as char '{}'", ch, ch as char);
         if self.buf_used < self.buf_size - 1 {
             self.buf[self.buf_used as usize] = ch;
             self.buf_used += 1;
@@ -134,6 +132,7 @@ impl Parser {
         }
         false
     }
+
     ///
     ///
     ///
@@ -142,6 +141,7 @@ impl Parser {
         //Rewind the end pointer back to the previous position.
         self.buf_used = self.buf_current;
     }
+
     ///
     ///
     ///
@@ -150,26 +150,27 @@ impl Parser {
         self.append(b'\n');
         self.buf_current = self.buf_used;
     }
+
     ///
     ///
     ///
     fn handle_urc(&mut self) {
         let line = &self.buf[self.buf_current..self.buf_used];
         match self.cbs.handle_urc {
-                Some(f) => f(&line),
-                None => {
-                    println!("\t\tNo 'URC' user-handler defined");
-                    // do nothing
-                }
+            Some(f) => f(&line),
+            None => {
+                println!("\t\tNo 'URC' user-handler defined");
+                // do nothing
+            }
         };
         self.discard_line();
     }
-    
+
     ///
     ///
     ///
-    fn finalize(&self){
-    }
+    fn finalize(&self) {}
+
     ///
     ///
     ///
@@ -178,19 +179,20 @@ impl Parser {
         self.finalize();
         let line = &self.buf[0..self.buf_used];
         match self.cbs.handle_response {
-                Some(f) => f(&line),
-                None => {
-                    println!("\t\tNo 'response' user-handler defined");
-                    // do nothing
-                }
+            Some(f) => f(&line),
+            None => {
+                println!("\t\tNo 'response' user-handler defined");
+                // do nothing
+            }
         };
         self.reset();
     }
+
     ///
     ///
     ///
     fn generic_scan_line(&self, line: &[u8]) -> at_response_type {
-        println!("generic(parser's) scan line : {:X?}", line);
+        println!("generic(parser's) scan line : {:02X?}", line);
         use at_response_type::*;
         match self.state {
             at_parser_state::DATAPROMPT => {
@@ -211,6 +213,7 @@ impl Parser {
 
         INTERMEDIATE
     }
+
     ///
     ///
     ///
@@ -224,10 +227,10 @@ impl Parser {
 
         //TODO: NULL-terminate the response .
         //parser->buf[parser->buf_used] = '\0';
-        
+
         //Extract line address & length for later use.
         let line = &self.buf[self.buf_current as usize..self.buf_used as usize];
-        println!("\t\tline: {:X?} len:{}", line, line.len());
+        println!("\t\tline: {:02X?} len:{}", line, line.len());
 
         {
             use std::str;
@@ -259,30 +262,32 @@ impl Parser {
         //if (type == AT_RESPONSE_URC || parser->state == STATE_IDLE)
         match (&self.state, &response_type) {
             // https://doc.rust-lang.org/book/ch18-03-pattern-syntax.html#ignoring-parts-of-a-value-with-a-nested-_
-            (at_parser_state::IDLE, _ ) | (_, at_response_type::URC) => {
+            (at_parser_state::IDLE, _) | (_, at_response_type::URC) => {
                 drop(line);
                 self.handle_urc();
                 return;
-            },
-            _ => {},
+            }
+            _ => {}
         };
-        
+
         match (&response_type) {
             at_response_type::FINAL_OK => self.discard_line(),
             _ => self.include_line(),
         };
-        
+
         use at_response_type::*;
         match (response_type) {
             FINAL | FINAL_OK => self.handle_final_response(),
-            RAWDATA_FOLLOWS{amount} => {self.data_left = amount;
-                                        self.state = at_parser_state::RAWDATA;
-                                },
-            HEXDATA_FOLLOWS{amount} => {self.data_left = amount; 
-                                        self.nibble = -1; 
-                                        self.state = at_parser_state::HEXDATA;
-                                },
-            _ => {},
+            RAWDATA_FOLLOWS { amount } => {
+                self.data_left = amount;
+                self.state = at_parser_state::RAWDATA;
+            }
+            HEXDATA_FOLLOWS { amount } => {
+                self.data_left = amount;
+                self.nibble = -1;
+                self.state = at_parser_state::HEXDATA;
+            }
+            _ => {}
         };
     }
 
@@ -305,12 +310,12 @@ impl Parser {
                         self.handle_line();
                     }
                 }
-                
+
                 DATAPROMPT => {
                     if ch != &b'\r' && ch != &b'\n' {
                         self.append(*ch);
                     }
-                    //if self.buf_used == 2 && self.buf[0] == b'>' && self.buf[1] == b' ' {                
+                    //if self.buf_used == 2 && self.buf[0] == b'>' && self.buf[1] == b' ' {
                     if self.buf_used == 2 && &self.buf[0..2] == b"> " {
                         println!("dataprompt captured");
                         self.handle_line();
@@ -326,7 +331,7 @@ impl Parser {
                         self.include_line();
                         self.state = READLINE;
                     }
-                },
+                }
                 HEXDATA => {
                     if self.data_left > 0 {
                         let mut value = hex2int(*ch);
@@ -341,12 +346,12 @@ impl Parser {
                             }
                         }
                     }
-                
+
                     if self.data_left == 0 {
                         self.include_line();
                         self.state = READLINE;
                     }
-                },
+                }
             }
         }
     }
@@ -384,23 +389,29 @@ fn main() {
     let response = b"\rRING\r\n";
     parser.feed(response);
     println!("--------------------------");
-    
+
     let response = b"\rOK\r\n";
     parser.feed(response);
     println!("--------------------------");
-    
+
     parser.state = at_parser_state::READLINE;
     let response = b"OK\r\n";
     parser.feed(response);
     println!("--------------------------");
-    
+
     parser.state = at_parser_state::READLINE;
     let response = b"+CME ERROR:\r\nOK\r\n";
     parser.feed(response);
     println!("--------------------------");
-    
+
     parser.state = at_parser_state::DATAPROMPT;
     let response = b"> go\r\n";
+    parser.feed(response);
+    println!("--------------------------");
+
+    parser.state = at_parser_state::RAWDATA;
+    parser.data_left = 10;
+    let response = b"RAW\r12\n345";
     parser.feed(response);
     println!("--------------------------");
 }
