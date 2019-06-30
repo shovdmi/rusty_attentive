@@ -260,7 +260,7 @@ impl Parser {
         // type == AT_RESPONSE_URC means we are awaiting a response
         // to the AT command, and during threre was a string+\n (such as "RING\n")
         //if (type == AT_RESPONSE_URC || parser->state == STATE_IDLE)
-        match (&self.state, &response_type) {
+        match &self.state, &response_type {
             // https://doc.rust-lang.org/book/ch18-03-pattern-syntax.html#ignoring-parts-of-a-value-with-a-nested-_
             (at_parser_state::IDLE, _) | (_, at_response_type::URC) => {
                 drop(line);
@@ -270,7 +270,7 @@ impl Parser {
             _ => {}
         };
 
-        match (&response_type) {
+        match &response_type {
             at_response_type::FINAL_OK => self.discard_line(),
             _ => self.include_line(),
         };
