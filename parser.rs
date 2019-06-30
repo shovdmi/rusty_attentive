@@ -60,11 +60,26 @@ struct callbacks {
 }
 impl callbacks {}
 
+
+fn hex2int(c: u8) -> i16 {
+    if c >= b'0' && c <= b'9' {
+        return (c - b'0') as i16;
+    }
+    if c >= b'A' && c <= b'F' {
+        return (c - b'A' + 10) as i16;
+    }
+    if c >= b'a' && c <= b'f' {
+        return (c - b'a' + 10) as i16;
+    }
+    return -1;
+}
+
+
 struct Parser {
     state: at_parser_state,
     expect_data_promt: bool,
     data_left: usize,
-    nibble: i8,
+    nibble: i16,
 
     buf: [u8; 128],
     buf_used: usize,
@@ -275,10 +290,10 @@ impl Parser {
     ///
     ///
     fn feed(&mut self, st: &[u8]) {
-        println!("\tparser state {:?} feed (\"{:?}\")", self.state, st);
+        println!("\tparser state {:?} feed (\"{:02X?}\")", self.state, st);
 
         for ch in st {
-            println!("{}", ch);
+            println!("0x{:02X}", ch);
 
             use at_parser_state::*;
             match self.state {
@@ -292,13 +307,46 @@ impl Parser {
                 }
                 
                 DATAPROMPT => {
-                    if self.buf_used == 2 && self.buf[0] == b'>' && self.buf[1] == b' ' {
+                    if ch != &b'\r' && ch != &b'\n' {
+                        self.append(*ch);
+                    }
+                    //if self.buf_used == 2 && self.buf[0] == b'>' && self.buf[1] == b' ' {                
+                    if self.buf_used == 2 && &self.buf[0..2] == b"> " {
+                        println!("dataprompt captured");
                         self.handle_line();
                     }
                 }
 
-                RAWDATA => {}
-                HEXDATA => {}
+                RAWDATA => {
+                    if self.data_left > 0 {
+                        self.append(*ch);
+                        self.data_left -= 1;
+                    }
+                    if self.data_left == 0 {
+                        self.include_line();
+                        self.state = READLINE;
+                    }
+                },
+                HEXDATA => {
+                    if self.data_left > 0 {
+                        let mut value = hex2int(*ch);
+                        if (value != -1) {
+                            if self.nibble == -1 {
+                                self.nibble = value;
+                            } else {
+                                value |= (self.nibble << 4);
+                                self.nibble = -1;
+                                self.append(value as u8);
+                                self.data_left -= 1;
+                            }
+                        }
+                    }
+                
+                    if self.data_left == 0 {
+                        self.include_line();
+                        self.state = READLINE;
+                    }
+                },
             }
         }
     }
@@ -335,15 +383,24 @@ fn main() {
 
     let response = b"\rRING\r\n";
     parser.feed(response);
+    println!("--------------------------");
     
     let response = b"\rOK\r\n";
     parser.feed(response);
-
+    println!("--------------------------");
+    
+    parser.state = at_parser_state::READLINE;
+    let response = b"OK\r\n";
+    parser.feed(response);
+    println!("--------------------------");
+    
     parser.state = at_parser_state::READLINE;
     let response = b"+CME ERROR:\r\nOK\r\n";
     parser.feed(response);
-
+    println!("--------------------------");
+    
     parser.state = at_parser_state::DATAPROMPT;
     let response = b"> go\r\n";
     parser.feed(response);
+    println!("--------------------------");
 }
