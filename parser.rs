@@ -253,8 +253,8 @@ impl Parser {
         };
         
         match (&response_type) {
-            at_response_type::FINAL_OK => self.include_line(),
-            _ => self.discard_line(),
+            at_response_type::FINAL_OK => self.discard_line(),
+            _ => self.include_line(),
         };
         
         use at_response_type::*;
