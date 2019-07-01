@@ -246,12 +246,14 @@ impl Parser {
         //Determine response type.
         let mut response_type = match self.cbs.scan_line {
             Some(f) => f(&line),
-            None => println!("\t\tNo user-handler defined"),
+            None => { println!("\t\tNo user-handler defined"); 
+                      at_response_type::UNKNOWN
+            },
         };
 
         response_type = match (&response_type) {
                 at_response_type::UNKNOWN => self.generic_scan_line(line),
-                _ => {},
+                _ => at_response_type::UNKNOWN,
         };
 
         println!("Response type: {:#?}", response_type);
