@@ -70,7 +70,7 @@ impl callbacks {}
 //------------------------------------------------------------------------------
 fn print_array_as_str(s: &str, line : &[u8], e : &str) {
 use std::str;
-    let sl: &str = match str::from_utf8(&line) {
+    match str::from_utf8(&line) {
         Ok(v) => {
             print!("{}{:?} len:{} {}", s, v, v.len(), e);
             v
@@ -130,7 +130,7 @@ impl Parser {
     ///
     ///
     fn append(&mut self, ch: u8) {
-        println!("\tparser append '0x{:02X?}' as char '{}'", ch, ch as char);
+        println!("\tparser append {:?} 0x{:02X?}", ch as char, ch);
         if self.buf_used < self.buf_size - 1 {
             self.buf[self.buf_used as usize] = ch;
             self.buf_used += 1;
@@ -201,19 +201,12 @@ impl Parser {
     ///
     ///
     fn handle_final_response(&mut self) {
-        print!("parser final response... ");
+        print!("parser final response: ");
         self.finalize();
         let line = &self.buf[0..self.buf_used];
         
-        print_array_as_str(&"\t\thandling final response:", &line, "\n");
-        
-        /*match self.cbs.handle_response {
-            Some(f) => f(&line),
-            None => {
-                println!("\t\tNo 'response' user-handler defined");
-                // do nothing
-            }
-        }; */
+        print_array_as_str(&" handling final response:", &line, "\n");
+
         if let Some(f) = self.cbs.handle_response { f(&line) }
         else {println!("\t\tNo 'response' user-handler defined");};
         
@@ -347,12 +340,12 @@ impl Parser {
     ///
     ///
     fn feed(&mut self, st: &[u8]) {
-        print!("\tparser state {:?} feed", self.state);
-        print_array_as_str("\t", &st, "\n");
+        print!("\tparser state {:?} feed ", self.state);
+        print_array_as_str("", &st, "\n");
         println!("\t(\"{:02X?}\")", st);
 
         for ch in st {
-            print!("[{:?}] 0x{:02X} ", self.state, ch);
+            print!("[{:?}] {:?} 0x{:02X} ", self.state, *ch as char, ch);
 
             use at_parser_state::*;
             match self.state {
