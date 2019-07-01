@@ -1,8 +1,16 @@
 #![deny(unsafe_code)]
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
+#![no_mangle]
 //TODO: fix this
 #![allow(non_upper_case_globals)]
+
+/* macro_rules! println {
+    () => (print!("\n"));
+    ($($arg:tt)*) => ({
+        //$crate::io::_print(format_args_nl!($($arg)*));
+    })
+}*/
 
 const PARSER_BUF_SIZE: usize = 128;
 
@@ -46,10 +54,8 @@ struct callback_func {
 }
 impl callback_func {
     fn try_to_call(self, s: &str) {
-        match self.handler_func {
-            Some(f) => f(s),
-            None => println!("No user-handler defined"),
-        }
+        if let Some(f) = self.handler_func { f(s) }
+        else { println!("No user-handler defined") };
     }
 }
 
@@ -70,6 +76,7 @@ fn hex2int(c: u8) -> i16 {
     if c >= b'a' && c <= b'f' {
         return (c - b'a' + 10) as i16;
     }
+    
     return -1;
 }
 
@@ -127,6 +134,7 @@ impl Parser {
                     println!("FOUND: \"{}\"", s);
                     return true;
                 };
+                
                 println!("\t{:X?} at {} pos", table[i], i);
             }
         }
@@ -156,13 +164,16 @@ impl Parser {
     ///
     fn handle_urc(&mut self) {
         let line = &self.buf[self.buf_current..self.buf_used];
-        match self.cbs.handle_urc {
+        /*match self.cbs.handle_urc {
             Some(f) => f(&line),
             None => {
                 println!("\t\tNo 'URC' user-handler defined");
                 // do nothing
             }
-        };
+        }; */
+        if let Some(f) = self.cbs.handle_urc { f(&line)}
+        else {println!("\t\tNo 'URC' user-handler defined")}
+        
         self.discard_line();
     }
 
@@ -178,13 +189,17 @@ impl Parser {
         println!("parser final response");
         self.finalize();
         let line = &self.buf[0..self.buf_used];
-        match self.cbs.handle_response {
+        
+        /*match self.cbs.handle_response {
             Some(f) => f(&line),
             None => {
                 println!("\t\tNo 'response' user-handler defined");
                 // do nothing
             }
-        };
+        }; */
+        if let Some(f) = self.cbs.handle_response { f(&line) }
+        else {println!("\t\tNo 'response' user-handler defined");};
+        
         self.reset();
     }
 
@@ -244,16 +259,25 @@ impl Parser {
         }
 
         //Determine response type.
-        let mut response_type = match self.cbs.scan_line {
+        /*let mut response_type = match self.cbs.scan_line {
             Some(f) => f(&line),
             None => { println!("\t\tNo user-handler defined"); 
                       at_response_type::UNKNOWN
             },
-        };
+        };*/
 
-        response_type = match (&response_type) {
+        let mut response_type = at_response_type::UNKNOWN;
+        
+        if let Some(f) = self.cbs.scan_line {
+            response_type = f(&line);
+        }
+        else {
+            println!("\t\tNo user-handler defined");
+        }
+        
+        response_type = match &response_type {
                 at_response_type::UNKNOWN => self.generic_scan_line(line),
-                _ => at_response_type::UNKNOWN,
+                _ => response_type,
         };
 
         println!("Response type: {:#?}", response_type);
@@ -363,7 +387,7 @@ impl Parser {
 
 fn user_scan_line(s: &[u8]) -> at_response_type {
     println!("user callback 'scan_line': {:?}", s);
-    at_response_type::FINAL_OK
+    at_response_type::UNKNOWN
 }
 
 fn user_handle_response(s: &[u8]) {
