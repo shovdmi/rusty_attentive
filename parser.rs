@@ -54,8 +54,11 @@ struct callback_func {
 }
 impl callback_func {
     fn try_to_call(self, s: &str) {
-        if let Some(f) = self.handler_func { f(s) }
-        else { println!("No user-handler defined") };
+        if let Some(f) = self.handler_func {
+            f(s)
+        } else {
+            println!("No user-handler defined")
+        };
     }
 }
 
@@ -66,17 +69,16 @@ struct callbacks {
 }
 impl callbacks {}
 
-
 //------------------------------------------------------------------------------
-fn print_array_as_str(s: &str, line : &[u8], e : &str) {
-use std::str;
+fn print_array_as_str(s: &str, line: &[u8], e: &str) {
+    use std::str;
     match str::from_utf8(&line) {
         Ok(v) => {
             print!("{}{:?} len:{} {}", s, v, v.len(), e);
             v
         }
         Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-    };    
+    };
 }
 //------------------------------------------------------------------------------
 
@@ -90,17 +92,19 @@ fn hex2int(c: u8) -> i16 {
     if c >= b'a' && c <= b'f' {
         return (c - b'a' + 10) as i16;
     }
-    
+
     return -1;
 }
 
+#[repr(C, align(8))]
 struct Parser {
+    buf: [u8; PARSER_BUF_SIZE],
+
     state: at_parser_state,
     expect_data_promt: bool,
     data_left: usize,
     nibble: i16,
 
-    buf: [u8; PARSER_BUF_SIZE],
     buf_used: usize,
     buf_size: usize,
     buf_current: usize,
@@ -118,8 +122,7 @@ impl Parser {
         self.expect_data_promt = false;
         self.data_left = 0;
         self.nibble = 0;
-
-        self.buf = [b'\0'; PARSER_BUF_SIZE];
+        //self.buf = [b'\0'; PARSER_BUF_SIZE];
         self.buf_used = 0;
         //self.buf_size = PARSER_BUF_SIZE;
         self.buf_current = 0;
@@ -181,9 +184,12 @@ impl Parser {
                 // do nothing
             }
         }; */
-        if let Some(f) = self.cbs.handle_urc { f(&line)}
-        else {println!("\t\tNo 'URC' user-handler defined")}
-        
+        if let Some(f) = self.cbs.handle_urc {
+            f(&line)
+        } else {
+            println!("\t\tNo 'URC' user-handler defined")
+        }
+
         self.discard_line();
     }
 
@@ -199,12 +205,15 @@ impl Parser {
         print!("parser final response: ");
         self.finalize();
         let line = &self.buf[0..self.buf_used];
-        
+
         print_array_as_str(&" handling final response:", &line, "\n");
 
-        if let Some(f) = self.cbs.handle_response { f(&line) }
-        else {println!("\t\tNo 'response' user-handler defined");};
-        
+        if let Some(f) = self.cbs.handle_response {
+            f(&line)
+        } else {
+            println!("\t\tNo 'response' user-handler defined");
+        };
+
         self.reset();
     }
 
@@ -212,15 +221,15 @@ impl Parser {
     ///
     ///
     fn generic_scan_line(&self, line: &[u8]) -> at_response_type {
-        print!("generic(parser's) scan line :" );
+        print!("generic(parser's) scan line :");
         print_array_as_str("\t", &line, "\n");
         println!("\t{:02X?}", line);
-        
+
         use at_response_type::*;
 
         if let at_parser_state::DATAPROMPT = self.state {
             if line.len() == 2 && line == b"> " {
-                    return FINAL_OK;
+                return FINAL_OK;
             }
         }
 
@@ -251,26 +260,30 @@ impl Parser {
         let line = &self.buf[self.buf_current..self.buf_used];
         print_array_as_str(&"", &line, "\n");
         println!("\t{:02X?} len:{}", line, line.len());
-        
+
         //Determine response type.
         use at_response_type::*;
-        
+
         let mut response_type = UNKNOWN;
-        
+
         if let Some(f) = self.cbs.scan_line {
             response_type = f(&line);
-            println!("Response type(from 'scan_line' callback): {:#?}", response_type);
-        }
-        else {
+            println!(
+                "Response type(from 'scan_line' callback): {:#?}",
+                response_type
+            );
+        } else {
             println!("\t\tNo user-handler defined");
         }
-        
+
         if let UNKNOWN = response_type {
             response_type = self.generic_scan_line(line);
-            println!("Response type(from generic 'scan_line'): {:#?}", response_type);
+            println!(
+                "Response type(from generic 'scan_line'): {:#?}",
+                response_type
+            );
         }
 
-        
         // Expected URCs and all unexpected lines are sent to URC handler.
         // parser->state == STATE_IDLE -- means, we are in the idle state,
         // and suddenly received a string+\n (such as "RING\n")
@@ -290,11 +303,10 @@ impl Parser {
                 println!("incoming /URC/ during READLINE, DATAPROMT, HEXDATA or RAWDATA");
                 self.handle_urc();
                 return;
-                
             }
             _ => {}
         };
-        
+
         match &response_type {
             FINAL_OK => self.discard_line(),
             _ => self.include_line(),
@@ -331,8 +343,7 @@ impl Parser {
                 IDLE | READLINE => {
                     if ch != &b'\r' && ch != &b'\n' {
                         self.append(*ch);
-                    }
-                    else {
+                    } else {
                         println!("\tskipping \\r or \\n");
                     }
                     if ch == &b'\n' {
@@ -391,7 +402,7 @@ impl Parser {
 fn user_scan_line(s: &[u8]) -> at_response_type {
     print!("user callback 'scan_line': ");
     print_array_as_str("", &s, "\n");
-    println!("\t{:02X?}", s);    
+    println!("\t{:02X?}", s);
     at_response_type::UNKNOWN
 }
 
@@ -422,30 +433,30 @@ fn main() {
         cbs: callbacks {
             scan_line: Some(user_scan_line),
             handle_response: Some(user_handle_response), //None,
-            handle_urc: None, //Some(user_handle_urc),           //None,
+            handle_urc: None,                            //Some(user_handle_urc),           //None,
         },
     };
 
     parser.reset();
-    
+
     println!("\n1. --------------------------");
     let response = b"\rRING\r\n";
     parser.feed(response);
-    
+
     println!("\n2. --------------------------");
     let response = b"\rOK\r\n";
     parser.feed(response);
-    
+
     println!("\n3. --------------------------");
     parser.state = at_parser_state::READLINE;
     let response = b"OK\r\n";
     parser.feed(response);
-    
+
     println!("\n4. --------------------------");
     parser.state = at_parser_state::READLINE;
     let response = b"+CME ERROR:\r\nOK\r\n";
     parser.feed(response);
-    
+
     println!("\n5. --------------------------");
     parser.state = at_parser_state::DATAPROMPT;
     let response = b"> go\r\n";
@@ -454,7 +465,7 @@ fn main() {
     parser.state = at_parser_state::READLINE;
     let response = b"\rOK\r\n";
     parser.feed(response);
-    
+
     println!("\n6. --------------------------");
     parser.state = at_parser_state::READLINE;
     let response = b"intermediate\r\n";
@@ -462,7 +473,7 @@ fn main() {
     println!("- - - - - - - - - - - - - -");
     let response = b"\rOK\r\n";
     parser.feed(response);
-    
+
     println!("\n7. --------------------------");
     parser.state = at_parser_state::RAWDATA;
     parser.data_left = 10;
@@ -474,6 +485,5 @@ fn main() {
     println!("\n8. --------------------------");
     parser.state = at_parser_state::READLINE;
     let response = b"RING\r\nOK\r\n";
-    parser.feed(response);    
-    
+    parser.feed(response);
 }
