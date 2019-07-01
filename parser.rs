@@ -79,7 +79,7 @@ struct Parser {
     data_left: usize,
     nibble: i16,
 
-    buf: [u8; 128],
+    buf: [u8; PARSER_BUF_SIZE],
     buf_used: usize,
     buf_size: usize,
     buf_current: usize,
@@ -385,7 +385,7 @@ fn main() {
         data_left: 0,
         nibble: 0,
 
-        buf: [b'\0'; 128],
+        buf: [b'\0'; PARSER_BUF_SIZE],
         buf_used: 0,
         buf_size: PARSER_BUF_SIZE,
         buf_current: 0,
