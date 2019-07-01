@@ -221,13 +221,19 @@ impl Parser {
         print_array_as_str("\t", &line, "\n");
         println!("\t{:02X?}", line);
         use at_response_type::*;
-        match self.state {
+
+        /*match self.state {
             at_parser_state::DATAPROMPT => {
                 if line.len() == 2 && line == b"> " {
                     return FINAL_OK;
                 }
             }
             _ => {}
+        }*/
+        if let at_parser_state::DATAPROMPT = self.state {
+            if line.len() == 2 && line == b"> " {
+                    return FINAL_OK;
+            }
         }
 
         if self.at_prefix_in_table(&line, &urc_responses) {
@@ -453,25 +459,25 @@ fn main() {
 
     parser.reset();
     
-    println!("1. --------------------------");
+    println!("\n1. --------------------------");
     let response = b"\rRING\r\n";
     parser.feed(response);
     
-    println!("2. --------------------------");
+    println!("\n2. --------------------------");
     let response = b"\rOK\r\n";
     parser.feed(response);
     
-    println!("3. --------------------------");
+    println!("\n3. --------------------------");
     parser.state = at_parser_state::READLINE;
     let response = b"OK\r\n";
     parser.feed(response);
     
-    println!("4. --------------------------");
+    println!("\n4. --------------------------");
     parser.state = at_parser_state::READLINE;
     let response = b"+CME ERROR:\r\nOK\r\n";
     parser.feed(response);
     
-    println!("5. --------------------------");
+    println!("\n5. --------------------------");
     parser.state = at_parser_state::DATAPROMPT;
     let response = b"> go\r\n";
     parser.feed(response);
@@ -480,7 +486,7 @@ fn main() {
     let response = b"\rOK\r\n";
     parser.feed(response);
     
-    println!("6. --------------------------");
+    println!("\n6. --------------------------");
     parser.state = at_parser_state::READLINE;
     let response = b"intermediate\r\n";
     parser.feed(response);
@@ -488,7 +494,7 @@ fn main() {
     let response = b"\rOK\r\n";
     parser.feed(response);
     
-    println!("7. --------------------------");
+    println!("\n7. --------------------------");
     parser.state = at_parser_state::RAWDATA;
     parser.data_left = 10;
     let response = b"RAW\r12\n345";
@@ -496,9 +502,8 @@ fn main() {
     let response = b"OK\n";
     parser.feed(response);
 
-    println!("8. --------------------------");
+    println!("\n8. --------------------------");
     parser.state = at_parser_state::READLINE;
     let response = b"RING\r\nOK\r\n";
     parser.feed(response);    
-    
 }
