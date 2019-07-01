@@ -229,7 +229,7 @@ impl Parser {
         //parser->buf[parser->buf_used] = '\0';
 
         //Extract line address & length for later use.
-        let line = &self.buf[self.buf_current as usize..self.buf_used as usize];
+        let line = &self.buf[self.buf_current..self.buf_used];
         println!("\t\tline: {:02X?} len:{}", line, line.len());
 
         {
@@ -244,12 +244,14 @@ impl Parser {
         }
 
         //Determine response type.
-        let response_type = match self.cbs.scan_line {
+        let mut response_type = match self.cbs.scan_line {
             Some(f) => f(&line),
-            None => {
-                println!("\t\tNo user-handler defined");
-                self.generic_scan_line(line)
-            }
+            None => println!("\t\tNo user-handler defined"),
+        };
+
+        response_type = match (&response_type) {
+                at_response_type::UNKNOWN => self.generic_scan_line(line),
+                _ => {},
         };
 
         println!("Response type: {:#?}", response_type);
