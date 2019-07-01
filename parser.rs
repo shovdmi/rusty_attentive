@@ -144,11 +144,6 @@ impl Parser {
         for i in 0..table.len() {
             if line == table[i] {
                 print_array_as_str("FOUND:\t", &table[i], "");
-                /*use std::str;
-                if let Ok(s) = str::from_utf8(table[i]) {
-                    println!("FOUND: \"{}\"", s);
-                    return true;
-                };*/
                 println!("\t{:X?} at {} pos", table[i], i);
                 return true;
             }
@@ -220,16 +215,9 @@ impl Parser {
         print!("generic(parser's) scan line :" );
         print_array_as_str("\t", &line, "\n");
         println!("\t{:02X?}", line);
+        
         use at_response_type::*;
 
-        /*match self.state {
-            at_parser_state::DATAPROMPT => {
-                if line.len() == 2 && line == b"> " {
-                    return FINAL_OK;
-                }
-            }
-            _ => {}
-        }*/
         if let at_parser_state::DATAPROMPT = self.state {
             if line.len() == 2 && line == b"> " {
                     return FINAL_OK;
@@ -259,23 +247,15 @@ impl Parser {
             return;
         }
 
-        //TODO: NULL-terminate the response .
-        //parser->buf[parser->buf_used] = '\0';
-
         //Extract line address & length for later use.
         let line = &self.buf[self.buf_current..self.buf_used];
         print_array_as_str(&"", &line, "\n");
         println!("\t{:02X?} len:{}", line, line.len());
         
         //Determine response type.
-        /*let mut response_type = match self.cbs.scan_line {
-            Some(f) => f(&line),
-            None => { println!("\t\tNo user-handler defined"); 
-                      at_response_type::UNKNOWN
-            },
-        };*/
-
-        let mut response_type = at_response_type::UNKNOWN;
+        use at_response_type::*;
+        
+        let mut response_type = UNKNOWN;
         
         if let Some(f) = self.cbs.scan_line {
             response_type = f(&line);
@@ -285,16 +265,11 @@ impl Parser {
             println!("\t\tNo user-handler defined");
         }
         
-        
-        
-        response_type = match &response_type {
-                at_response_type::UNKNOWN => { 
-                        let t = self.generic_scan_line(line);
-                        println!("Response type(from generic 'scan_line'): {:#?}", &t);
-                        t
-                }
-                _ => response_type,
-        };
+        if let UNKNOWN = response_type {
+            response_type = self.generic_scan_line(line);
+            println!("Response type(from generic 'scan_line'): {:#?}", response_type);
+        }
+
         
         // Expected URCs and all unexpected lines are sent to URC handler.
         // parser->state == STATE_IDLE -- means, we are in the idle state,
@@ -304,7 +279,6 @@ impl Parser {
         // to the AT command, and during threre was a string+\n (such as "RING\n")
         //if (type == AT_RESPONSE_URC || parser->state == STATE_IDLE)
         match (&self.state, &response_type) {
-            // https://doc.rust-lang.org/book/ch18-03-pattern-syntax.html#ignoring-parts-of-a-value-with-a-nested-_
             (at_parser_state::IDLE, _) => {
                 drop(line);
                 println!("at IDLE any massages are treated as URC");
@@ -320,13 +294,12 @@ impl Parser {
             }
             _ => {}
         };
-
+        
         match &response_type {
-            at_response_type::FINAL_OK => self.discard_line(),
+            FINAL_OK => self.discard_line(),
             _ => self.include_line(),
         };
 
-        use at_response_type::*;
         match response_type {
             FINAL | FINAL_OK => self.handle_final_response(),
             RAWDATA_FOLLOWS { amount } => {
@@ -435,10 +408,6 @@ fn user_handle_urc(s: &[u8]) {
 }
 
 fn main() {
-    // let scan_line = |&s| println!("generic callback scanline: {}", &s);
-    // let handle_response = |&s|  println!("generic callback handle_response: {}", &s);
-    // let handle_urc = |&s| println!("generic callback handle_urc {}", &s);
-
     let mut parser = Parser {
         state: at_parser_state::IDLE,
         expect_data_promt: false,
@@ -506,4 +475,5 @@ fn main() {
     parser.state = at_parser_state::READLINE;
     let response = b"RING\r\nOK\r\n";
     parser.feed(response);    
+    
 }
