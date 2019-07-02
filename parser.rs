@@ -47,6 +47,7 @@ enum at_response_type {
     HEXDATA_FOLLOWS { amount: usize }, // rust's enum feature
 }
 
+/*
 //https://stackoverflow.com/questions/41081240/idiomatic-callbacks-in-rust/41081702
 //https://users.rust-lang.org/t/solved-how-to-pass-none-to-a-function-when-an-option-closure-is-expected/10956/2
 struct callback_func {
@@ -60,15 +61,7 @@ impl callback_func {
             println!("No user-handler defined")
         };
     }
-}
-
-struct callbacks {
-    scan_line: Option<fn(&[u8]) -> at_response_type>,
-    handle_response: Option<fn(&[u8])>,
-    handle_urc: Option<fn(&[u8])>,
-}
-impl callbacks {}
-
+}*/
 //------------------------------------------------------------------------------
 fn print_array_as_str(s: &str, line: &[u8], e: &str) {
     use std::str;
@@ -96,12 +89,22 @@ fn hex2int(c: u8) -> i16 {
     return -1;
 }
 
+
+struct callbacks {
+    scan_line: Option<fn(&[u8]) -> at_response_type>,
+    handle_response: Option<fn(&[u8])>,
+    handle_urc: Option<fn(&[u8])>,
+}
+impl callbacks {}
+
+
+
 #[repr(C, align(8))]
 struct Parser {
     buf: [u8; PARSER_BUF_SIZE],
 
     state: at_parser_state,
-    expect_data_promt: bool,
+    expect_dataprompt: bool,
     data_left: usize,
     nibble: i16,
 
@@ -119,7 +122,7 @@ impl Parser {
     fn reset(&mut self) {
         println!("\tresetting parser");
 
-        self.expect_data_promt = false;
+        self.expect_dataprompt = false;
         self.data_left = 0;
         self.nibble = 0;
         //self.buf = [b'\0'; PARSER_BUF_SIZE];
@@ -128,7 +131,16 @@ impl Parser {
         self.buf_current = 0;
         self.state = at_parser_state::IDLE;
     }
-
+    
+    ///
+    ///
+    ///
+    fn await_response(&mut self) {
+        self.state = if self.expect_dataprompt { at_parser_state::DATAPROMPT }
+                     else { at_parser_state::READLINE };
+        println!("await_respone(): new parser state [{:?}]", self.state);
+    }
+    
     ///
     ///
     ///
@@ -196,7 +208,15 @@ impl Parser {
     ///
     ///
     ///
-    fn finalize(&self) {}
+    fn finalize(&mut self) {
+        /* Remove the last newline, if any. */
+		if self.buf_used > 0 {
+			self.buf_used-=1;
+		}
+
+		/* NULL-terminate the response. */
+		self.buf[self.buf_used] = b'\0';
+    }
 
     ///
     ///
@@ -418,10 +438,12 @@ fn user_handle_urc(s: &[u8]) {
     println!("\t{:02X?}", s);
 }
 
+
+
 fn main() {
     let mut parser = Parser {
         state: at_parser_state::IDLE,
-        expect_data_promt: false,
+        expect_dataprompt: false,
         data_left: 0,
         nibble: 0,
 
@@ -438,7 +460,6 @@ fn main() {
     };
 
     parser.reset();
-
     println!("\n1. --------------------------");
     let response = b"\rRING\r\n";
     parser.feed(response);
@@ -486,4 +507,74 @@ fn main() {
     parser.state = at_parser_state::READLINE;
     let response = b"RING\r\nOK\r\n";
     parser.feed(response);
+}
+
+#[cfg(test)]
+mod tests {
+    fn tester(response: &[u8], expected_response: &[u8], test_name: &str) {
+        if response == expected_response {
+            println!("TEST PASSED [{}]:", test_name);
+        }
+        else {
+            println!("TEST FAILED [{}]:", test_name);
+        }
+        print_array_as_str("\tresponse: ", &response, "\n");
+        print_array_as_str("\texpected: ", &expected_response, "\n");
+        assert_eq!(response, expected_response);
+    }
+    
+    use super::*;
+    
+    #[test]
+    fn test_parser_response() {
+        let mut parser = Parser {
+            state: at_parser_state::IDLE,
+            expect_dataprompt: false,
+            data_left: 0,
+            nibble: 0,
+    
+            buf: [b'\0'; PARSER_BUF_SIZE],
+            buf_used: 0,
+            buf_size: PARSER_BUF_SIZE,
+            buf_current: 0,
+    
+            cbs: callbacks {
+                scan_line: None,
+                handle_response: None, //None,
+                handle_urc: None,                            //Some(user_handle_urc),           //None,
+            },
+        };
+
+        parser.reset();
+        
+
+        let tester_fn = |x:&[u8]| tester(&x, b"ERROR", "Test1");
+        parser.cbs.handle_response = Some(tester_fn);
+        parser.await_response();
+        parser.feed(b"\r\nERROR\r\n");
+        
+        let tester_fn = |x:&[u8]| tester(&x, b"", "Test2.1");
+        parser.cbs.handle_response = Some(tester_fn);
+        parser.await_response();
+        parser.feed(b"\r\n\r\n\r\n\r\n\r\n");
+        let tester_fn = |x:&[u8]| tester(&x, b"ERROR", "Test2.2");
+        parser.cbs.handle_response = Some(tester_fn);
+        //parser.await_response();
+        parser.feed(b"ERROR\r\n");
+        
+        let tester_fn = |x:&[u8]| tester(&x, b"", "Test3");
+        parser.cbs.handle_response = Some(tester_fn);
+        parser.await_response();
+        parser.feed(b"OK\r\n");
+        
+        let tester_fn = |x:&[u8]| tester(&x, b"123456789", "Test4");
+        parser.cbs.handle_response = Some(tester_fn);
+        parser.await_response();
+        parser.feed(b"123456789\r\nOK\r\n");
+       
+        let tester_fn = |x:&[u8]| tester(&x, b"123456789\nERROR", "Test5");
+        parser.cbs.handle_response = Some(tester_fn);
+        parser.await_response();
+        parser.feed(b"123456789\r\nERROR\r\n");
+    }
 }
